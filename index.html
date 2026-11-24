@@ -126,6 +126,7 @@ footer ul{padding-left:20px;margin:6px 0}
       <span id="fdims"></span>
       <label id="sheetWrap">シート <select id="sheet"></select></label>
       <label>見出し行 <input type="number" id="headerRow" min="1" value="1"></label>
+      <label><input type="checkbox" id="noHeader"> 見出し行なし</label>
       <label id="encWrap">文字コード
         <select id="enc">
           <option value="auto">自動</option>
@@ -135,6 +136,12 @@ footer ul{padding-left:20px;margin:6px 0}
         </select>
       </label>
       <button type="button" id="clear">クリア</button>
+    </div>
+    <div class="callout danger" id="hdrWarn" hidden>
+      <strong>1行目が見出しではなく、データのように見えます</strong>
+      <span id="hdrWarnText"></span>
+      見出しは変換されずにそのまま出力されます。見出し行のないファイルなら「見出し行なし」にしてください。
+      <div class="btns" style="margin-top:10px"><button type="button" id="hdrFix">見出し行なしとして読み直す</button></div>
     </div>
   </section>
 
@@ -175,7 +182,7 @@ footer ul{padding-left:20px;margin:6px 0}
     <div class="dl">
       <div class="dlbox">
         <h3>符号化済みデータ</h3>
-        <p>AIに渡すのはこちらです。選択中のシートだけを新しいファイルとして書き出します。</p>
+        <p>AIに渡すのはこちらです。選択中のシートだけを新しいファイルとして書き出します。ファイル名に元のファイル名は使いません。</p>
         <div class="btns">
           <button type="button" class="primary" id="dlCsv">CSVで保存</button>
           <button type="button" id="dlXlsx">Excelで保存</button>
@@ -198,6 +205,7 @@ footer ul{padding-left:20px;margin:6px 0}
   <footer>
     <ul>
       <li>ファイルはこのブラウザの中だけで処理され、どこにも送信・保存されません。ページを閉じると対応表も消えます。</li>
+      <li>ブラウザの拡張機能は、開いているページの内容を読めることがあります。実際の患者データを扱うときは、拡張機能を入れていないプロファイルかシークレットウィンドウで開いてください。</li>
       <li>以前の対応表を読み込んでから処理すると、追加データにも同じ符号が割り当てられます。</li>
       <li>対応表が残る限り、このデータは「匿名化」ではなく「仮名化（符号化）」です。利用は施設の規程と倫理審査の範囲に従ってください。</li>
     </ul>
@@ -322,10 +330,11 @@ const Core = (() => {
   }
 
   // ---------- 表 ----------
-  function makeTable(grid, headerRow, date1904) {
-    const hi = Math.max(0, (headerRow || 1) - 1);
+  // noHeader のときは全行をデータとして扱い、見出しは「列1, 列2…」にする
+  function makeTable(grid, headerRow, date1904, noHeader) {
+    const hi = noHeader ? -1 : Math.max(0, (headerRow || 1) - 1);
     let width = 0;
-    for (let r = hi; r < grid.length; r++) if (grid[r].length > width) width = grid[r].length;
+    for (let r = Math.max(hi, 0); r < grid.length; r++) if (grid[r].length > width) width = grid[r].length;
     const body = [];
     const used = new Array(width).fill(false);
     for (let r = hi + 1; r < grid.length; r++) {
@@ -336,7 +345,7 @@ const Core = (() => {
       }
       if (any) body.push(row);
     }
-    const hrow = grid[hi] || [];
+    const hrow = hi >= 0 ? (grid[hi] || []) : [];
     const htext = [];
     for (let c = 0; c < width; c++) {
       htext[c] = cellText(hrow[c], date1904).trim();
@@ -347,7 +356,28 @@ const Core = (() => {
     for (let c = 0; c < width; c++) if (used[c]) keep.push(c);
     const headers = keep.map(c => htext[c] !== '' ? htext[c] : '列' + (c + 1));
     const rows = keep.length === width ? body : body.map(row => keep.map(c => row[c]));
-    return { headers, rows, date1904: !!date1904 };
+    return { headers, rows, date1904: !!date1904, noHeader: !!noHeader };
+  }
+
+  // 見出しがデータらしく見える列の番号を返す。見出しは変換せずに出力するので、
+  // 見出し行のないファイルを見出しありとして読むと、1行目の患者の値がそのまま出てしまう。
+  function dataLikeHeaders(table) {
+    const out = [];
+    if (table.noHeader) return out;
+    const lim = Math.min(table.rows.length, 5000);
+    for (let c = 0; c < table.headers.length; c++) {
+      const hk = normKey(table.headers[c]);
+      if (hk === '') continue;
+      let hit = /^[\d.\-\/:]+$/.test(hk) && /\d/.test(hk); // 数字や日付だけの見出し
+      if (!hit && hk.length >= 2) {
+        // 見出しと同じ値がその列のデータにもある
+        for (let r = 0; r < lim; r++) {
+          if (normKey(cellText(table.rows[r][c], table.date1904)) === hk) { hit = true; break; }
+        }
+      }
+      if (hit) out.push(c);
+    }
+    return out;
   }
 
   // ---------- 列名からの提案 ----------
@@ -627,7 +657,7 @@ const Core = (() => {
     return res;
   }
 
-  return { decodeText, detectDelimiter, parseCsv, rowsToCsv, gridFromSheet, cellText, makeTable, suggest,
+  return { decodeText, detectDelimiter, parseCsv, rowsToCsv, gridFromSheet, cellText, makeTable, dataLikeHeaders, suggest,
     normKey, newStore, assign, commit, countEntries, mappingRows, importMapping,
     outCols, outText, toCsv, toWorkbook, workbookBytes, residualCheck };
 })();
@@ -654,7 +684,7 @@ const Core = (() => {
 
   const S = {
     fileName: '', buf: null, kind: null, wb: null, sheetName: null, grid: null, table: null,
-    cfg: [], store: Core.newStore(), headerRow: 1, encoding: 'auto', detectedEnc: '', delim: ',',
+    cfg: [], store: Core.newStore(), headerRow: 1, noHeader: false, encoding: 'auto', detectedEnc: '', delim: ',',
     previewMode: 'after', rowEls: [], residualTimer: 0, dataSaved: false
   };
 
@@ -682,6 +712,7 @@ const Core = (() => {
       S.sheetName = wb ? wb.SheetNames[0] : null;
       S.headerRow = 1; S.encoding = 'auto'; S.dataSaved = false;
       $('headerRow').value = 1; $('enc').value = 'auto';
+      setNoHeader(false);
       parseSource();
       setStatus('');
     } catch (e) {
@@ -703,13 +734,24 @@ const Core = (() => {
     }
     buildTable();
   }
+  function setNoHeader(v) {
+    S.noHeader = v;
+    $('noHeader').checked = v;
+    $('headerRow').disabled = v;
+  }
+  function renderHdrWarn() {
+    const cols = Core.dataLikeHeaders(S.table);
+    $('hdrWarn').hidden = cols.length === 0;
+    if (cols.length) $('hdrWarnText').textContent = '該当する見出し: ' + cols.slice(0, 5).map(c => '「' + clip(S.table.headers[c], 20) + '」').join('') + (cols.length > 5 ? ' ほか' : '') + '。';
+  }
   function buildTable() {
-    S.table = Core.makeTable(S.grid, S.headerRow, S.date1904);
+    S.table = Core.makeTable(S.grid, S.headerRow, S.date1904, S.noHeader);
     S.cfg = S.table.headers.map((hd, i) => {
       const s = Core.suggest(hd);
       return { action: s.action, prefix: s.prefix || ('C' + (i + 1)), note: s.note || '', warn: s.warn || '', suggested: s.action };
     });
     renderFileInfo();
+    renderHdrWarn();
     renderColumns();
     for (const id of ['step2', 'step3', 'step4']) $(id).hidden = false;
     refresh();
@@ -718,6 +760,7 @@ const Core = (() => {
     Object.assign(S, { fileName: '', buf: null, kind: null, wb: null, sheetName: null, grid: null, table: null, cfg: [], rowEls: [], dataSaved: false });
     $('file').value = '';
     $('fileinfo').hidden = true;
+    $('hdrWarn').hidden = true;
     for (const id of ['step2', 'step3', 'step4']) $(id).hidden = true;
     setStatus('');
   }
@@ -859,6 +902,11 @@ const Core = (() => {
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
   const base = () => S.fileName.replace(/\.[^.]+$/, '') || 'data';
+  // AIに渡すファイルの名前には元のファイル名を使わない（施設名や患者名が入っていることがある）
+  function dataName(ext) {
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    return '符号化済データ_' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + ext;
+  }
   const BOM = '﻿';
   function afterDataSave() {
     Core.commit(S.store);
@@ -874,7 +922,9 @@ const Core = (() => {
   for (const ev of ['dragleave', 'drop']) document.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); });
   document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) loadFile(f); });
 
-  $('sheet').addEventListener('change', e => { S.sheetName = e.target.value; S.headerRow = 1; $('headerRow').value = 1; parseSource(); });
+  $('sheet').addEventListener('change', e => { S.sheetName = e.target.value; S.headerRow = 1; $('headerRow').value = 1; setNoHeader(false); parseSource(); });
+  $('noHeader').addEventListener('change', e => { setNoHeader(e.target.checked); buildTable(); });
+  $('hdrFix').addEventListener('click', () => { setNoHeader(true); buildTable(); });
   $('headerRow').addEventListener('change', e => {
     const v = Math.max(1, Math.min(S.grid.length || 1, parseInt(e.target.value, 10) || 1));
     e.target.value = v; S.headerRow = v; buildTable();
@@ -899,14 +949,14 @@ const Core = (() => {
 
   $('dlCsv').addEventListener('click', () => {
     try {
-      save([BOM, Core.toCsv(S.table, S.cfg, S.store)], 'text/csv;charset=utf-8', base() + '_符号化済.csv');
+      save([BOM, Core.toCsv(S.table, S.cfg, S.store)], 'text/csv;charset=utf-8', dataName('.csv'));
       afterDataSave();
     } catch (e) { setStatus('保存に失敗しました: ' + e.message, true); }
   });
   $('dlXlsx').addEventListener('click', () => {
     try {
       const bytes = Core.workbookBytes(Core.toWorkbook(S.table, S.cfg, S.store));
-      save([bytes], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', base() + '_符号化済.xlsx');
+      save([bytes], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', dataName('.xlsx'));
       afterDataSave();
     } catch (e) { setStatus('保存に失敗しました: ' + e.message, true); }
   });
