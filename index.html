@@ -11,6 +11,7 @@
   --bg:#f5f6f8; --card:#fff; --ink:#1b2430; --muted:#667085; --line:#e2e6ed;
   --accent:#0f766e; --accent-ink:#fff; --accent-soft:#e3f3f1;
   --warn:#a15c07; --warn-soft:#fff6e0; --danger:#b42318; --danger-soft:#fdeceb;
+  --dummy:#5746af; --dummy-soft:#eeedfb;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
 @media (prefers-color-scheme:dark){
@@ -18,6 +19,7 @@
     --bg:#11151b; --card:#19202a; --ink:#e7ebf1; --muted:#98a2b3; --line:#2b3441;
     --accent:#3dbdb0; --accent-ink:#06211f; --accent-soft:#13322f;
     --warn:#f0b454; --warn-soft:#382a10; --danger:#f97066; --danger-soft:#3a1916;
+    --dummy:#b1a6f7; --dummy-soft:#25214a;
   }
 }
 *{box-sizing:border-box}
@@ -60,6 +62,7 @@ select,input[type=text],input[type=number],input[type=search]{border:1px solid v
 .fileinfo label{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
 .fileinfo input[type=number]{width:72px}
 .fname{font-weight:600;word-break:break-all}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
 .scroll{overflow:auto;border:1px solid var(--line);border-radius:10px}
 .scroll.tall{max-height:460px}
@@ -74,6 +77,8 @@ tr.encode td.colname{color:var(--accent)}
 tr.drop td.colname{color:var(--danger);text-decoration:line-through}
 tr.encode{background:var(--accent-soft)}
 tr.drop{background:var(--danger-soft)}
+tr.dummy{background:var(--dummy-soft)}
+tr.dummy td.colname{color:var(--dummy)}
 input.prefix{width:84px;font-family:var(--mono)}
 input.prefix:disabled{visibility:hidden}
 .tag{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;vertical-align:middle}
@@ -82,6 +87,7 @@ input.prefix:disabled{visibility:hidden}
 tr.encode .tag.sug{background:var(--card)}
 #preview td,#preview th{font-family:var(--mono);font-size:12.5px;max-width:260px;overflow:hidden;text-overflow:ellipsis}
 #preview th.enc,#preview td.enc{background:var(--accent-soft);color:var(--accent);font-weight:600}
+#preview th.dmy,#preview td.dmy{background:var(--dummy-soft);color:var(--dummy);font-weight:600}
 #preview th.drp,#preview td.drp{background:var(--danger-soft);color:var(--danger);text-decoration:line-through}
 .summary{font-size:14px;color:var(--muted);margin:0}
 .summary b{color:var(--ink);font-variant-numeric:tabular-nums}
@@ -89,6 +95,7 @@ tr.encode .tag.sug{background:var(--card)}
 .callout[hidden]{display:none}
 .callout.warn{background:var(--warn-soft);color:var(--warn)}
 .callout.danger{background:var(--danger-soft);color:var(--danger)}
+.callout.note{background:var(--dummy-soft);color:var(--dummy)}
 .callout ul{margin:6px 0 0;padding-left:20px}
 .callout strong{display:block}
 .dl{display:grid;grid-template-columns:1fr 1fr;gap:16px}
@@ -147,14 +154,17 @@ footer ul{padding-left:20px;margin:6px 0}
 
   <section class="card" id="step2" hidden>
     <h2><span class="num">2</span>列ごとの処理を選ぶ</h2>
-    <p class="hint">「符号化」にした列は、値ごとに無作為な符号（例: PT0001）へ置き換わります。同じ接頭辞の列は対応表を共有するので、主治医と施行医のように同じ人が入る列は接頭辞をそろえてください。空欄は空欄のままです。</p>
+    <p class="hint">「符号化」にした列は、値ごとに無作為な符号（例: PT0001）へ置き換わります。同じ接頭辞の列は対応表を共有するので、主治医と施行医のように同じ人が入る列は接頭辞をそろえてください。空欄は空欄のままです。「ダミー値」は測定値など数値の列で選べ、実際の値とは無関係な架空の数値に置き換えます。番号や日付の列では選べません。まとめて変えるボタンは、小数のある列と 3 桁以下の数値の列だけを対象にします。</p>
     <div class="toolbar">
       <p class="summary" id="summary"></p>
-      <input type="search" id="filter" placeholder="列名で絞り込み" aria-label="列名で絞り込み">
+      <div class="tools">
+        <button type="button" id="allDummy">測定値の列をまとめてダミー値に</button>
+        <input type="search" id="filter" placeholder="列名で絞り込み" aria-label="列名で絞り込み">
+      </div>
     </div>
     <div class="scroll tall">
       <table id="cols">
-        <thead><tr><th>#</th><th>列名</th><th>値の例</th><th>処理</th><th>接頭辞</th><th>符号の数</th></tr></thead>
+        <thead><tr><th>#</th><th>列名</th><th>値の例</th><th>処理</th><th>接頭辞</th><th>内容</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -169,6 +179,11 @@ footer ul{padding-left:20px;margin:6px 0}
       </div>
     </div>
     <div class="scroll"><table id="preview"><thead></thead><tbody></tbody></table></div>
+    <div class="callout note" id="dummyNote" hidden>
+      <strong>ダミー値の列があります</strong>
+      ダミー値は列ごとに作り直した架空の数値で、どの行の患者とも対応しません。このファイルで計算した結果に意味はありません。AIには解析コードを書いてもらい、実際のデータでは手元で実行してください。
+      <span id="dummyMixed">「そのまま」の列は実際の値のままです。行ごとの実データが残っている点は変わりません。</span>
+    </div>
     <div class="callout danger" id="residual" hidden></div>
     <div class="callout warn" id="colwarn" hidden></div>
     <div class="callout warn">
@@ -524,6 +539,139 @@ const Core = (() => {
     return { added, same, conflicts };
   }
 
+  // ---------- ダミー値 ----------
+  // 数値の列を、行とも他の列とも無関係な架空の数値に置き換える。
+  // 元の値に雑音を足す方式は取らない（その行の患者のおおよその値が残るため）。
+  const rbuf = new Uint32Array(256);
+  let rpos = 256;
+  function rand() {
+    if (rpos >= 256) { crypto.getRandomValues(rbuf); rpos = 0; }
+    return rbuf[rpos++] / 4294967296;
+  }
+  function randNormal() {
+    let u = 0;
+    while (u === 0) u = rand();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand());
+  }
+  function numDecimals(v) {
+    for (let d = 0; d < 6; d++) if (Math.abs(v - Number(v.toFixed(d))) <= 1e-9 * Math.max(1, Math.abs(v))) return d;
+    return 6;
+  }
+  // 先頭ゼロ付き（007 や 01）は番号やコードなので数値として扱わない
+  const NUM_STR_RE = /^[+-]?((0|[1-9]\d*)(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
+  function strNumber(s) {
+    const t = String(s).normalize('NFKC').trim();
+    if (!NUM_STR_RE.test(t)) return null;
+    const v = Number(t);
+    if (!isFinite(v)) return null;
+    if (/[eE]/.test(t)) return { v, d: numDecimals(v) };
+    const m = /\.(\d+)$/.exec(t);
+    return { v, d: m ? Math.min(m[1].length, 6) : 0 };
+  }
+  function cellNumber(cell) {
+    if (cell == null) return null;
+    if (typeof cell === 'string') return strNumber(cell);
+    if (cell.t === 's') return cell.v == null ? null : strNumber(cell.v);
+    if (cell.t === 'n' && typeof cell.v === 'number' && isFinite(cell.v)) {
+      const z = fmtOf(cell);
+      if (XLSX.SSF.is_date(z) || /^0+$/.test(z)) return null; // 日付と先頭ゼロ書式は数値にしない
+      return { v: cell.v, d: numDecimals(cell.v) };
+    }
+    return null;
+  }
+  // 列が数値かどうかと、ダミー値の作り方を決める
+  function numericInfo(table, c) {
+    if (!table._num) table._num = [];
+    if (table._num[c]) return table._num[c];
+    const nums = [], specials = new Map(), counts = new Map();
+    let blank = 0, decimals = 0, z = null, nonneg = true, nSpecial = 0;
+    for (const row of table.rows) {
+      const cell = row[c];
+      const t = cellText(cell, table.date1904).trim();
+      if (t === '') { blank++; continue; }
+      const x = cellNumber(cell);
+      if (!x) { specials.set(t, (specials.get(t) || 0) + 1); nSpecial++; continue; }
+      nums.push(x.v);
+      counts.set(x.v, (counts.get(x.v) || 0) + 1);
+      if (x.d > decimals) decimals = x.d;
+      if (x.v < 0) nonneg = false;
+      if (z == null && typeof cell === 'object' && cell.t === 'n' && cell.z != null && fmtOf(cell) !== 'General') z = fmtOf(cell);
+    }
+    const k = nums.length;
+    const numeric = k >= 5 && k >= 0.8 * (k + nSpecial);
+    // 番号や日付の列はダミー値の対象にしない。ダミー値は実際の値と同じ数字を含み得るが、
+    // 測定値なら害がないのに対し、番号や生年月日はその数字自体が個人を指すため。
+    let idLike = null, med = 0;
+    if (numeric) {
+      const sg = suggest(table.headers[c]);
+      const rawH = String(table.headers[c]).normalize('NFKC');
+      if (sg.action !== 'keep') idLike = '番号や氏名の列';
+      else if (sg.warn === '生年月日' || sg.warn === '日付') idLike = '日付の列';
+      else if (/番号|コード|郵便/.test(rawH) || /(^|[^A-Za-z])(id|code|zip)([^A-Za-z]|$)/i.test(rawH) ||
+        /(^|[^A-Za-z])(no|number)\.?$/i.test(rawH) || /[a-z](ID|Id|No|Code)$/.test(rawH)) idLike = '番号の列';
+      med = Float64Array.from(nums, Math.abs).sort()[Math.floor(k / 2)];
+      if (!idLike && decimals === 0 && med >= 10000) idLike = '5桁以上の整数の列';
+    }
+    const info = { nums, specials, counts, blank, decimals, z, nonneg, numeric, idLike, eligible: numeric && !idLike, bulkOk: false, mode: null };
+    if (info.eligible) {
+      // まとめて変えるボタンの対象は、小数のある列か3桁以下の列だけにする（4桁の整数は番号の可能性が残る）
+      info.bulkOk = decimals > 0 || med < 1000;
+      // freq: 値の種類が少なく、同じ値が繰り返し出る列（0/1 や段階評価）。件数が少ないだけの列は含めない。
+      // normal: 件数が少ない列。実際の値を材料にせず、平均とばらつきだけから作る。
+      // quantile: それ以外。分布の形に沿って作る。
+      info.mode = (counts.size <= 20 && counts.size * 3 <= k) ? 'freq' : (k < 20 ? 'normal' : 'quantile');
+    }
+    return (table._num[c] = info);
+  }
+  // 列のダミー値を行数ぶん作る（数値 / 文字 / null=空欄）。一度作ったら表を読み直すまで同じものを使う。
+  function dummyColumn(table, c) {
+    if (!table._dummy) table._dummy = [];
+    if (table._dummy[c]) return table._dummy[c];
+    const info = numericInfo(table, c);
+    if (!info.eligible) throw new Error('この列はダミー値にできません（数値でない、または番号・日付の列）');
+    const k = info.nums.length, d = info.decimals;
+    const round = x => { const y = Number(x.toFixed(d)); return y === 0 ? 0 : y; };
+    const out = [];
+    if (info.mode === 'freq') {
+      // 2回以上出てくる値だけから、出現割合に応じて引く（1回しかない値は再現しない）
+      const pool = [];
+      for (const v of info.nums) if (info.counts.get(v) >= 2) pool.push(v);
+      for (let i = 0; i < k; i++) out.push(pool[Math.floor(rand() * pool.length)]);
+    } else if (info.mode === 'normal') {
+      let mean = 0;
+      for (const v of info.nums) mean += v;
+      mean /= k;
+      let ss = 0;
+      for (const v of info.nums) ss += (v - mean) * (v - mean);
+      const sd = Math.sqrt(ss / (k - 1));
+      let lo = mean - 3 * sd;
+      const hi = mean + 3 * sd;
+      if (info.nonneg && lo < 0) lo = 0;
+      for (let i = 0; i < k; i++) out.push(round(Math.min(hi, Math.max(lo, mean + sd * randNormal()))));
+    } else {
+      // 並べた値のあいだを補間して引く。両端 m 件ずつ（2件以上、全体の約1%）は材料から外すので、
+      // 外れ値は出力されず、外れ値に向かう途中の値も出ない。
+      const sorted = Float64Array.from(info.nums).sort();
+      const m = Math.max(2, Math.ceil(k * 0.01));
+      const span = k - 1 - 2 * m;
+      for (let i = 0; i < k; i++) {
+        const p = m + rand() * span;
+        const j = Math.min(m + span - 1, Math.floor(p));
+        out.push(round(sorted[j] + (p - j) * (sorted[j + 1] - sorted[j])));
+      }
+    }
+    // 「<5」「不明」のような文字は、2回以上出てくるものだけ同じ数だけ残す。1回だけのものは空欄にする。
+    for (const [t, n] of info.specials) for (let i = 0; i < n; i++) out.push(n >= 2 ? t : null);
+    while (out.length < table.rows.length) out.push(null);
+    shuffle(out); // 空欄の位置も含めて、元の行とは無関係に並べる
+    return (table._dummy[c] = out);
+  }
+  function dummyText(table, c, r) {
+    const v = dummyColumn(table, c)[r];
+    if (v == null) return '';
+    return typeof v === 'number' ? v.toFixed(numericInfo(table, c).decimals) : v;
+  }
+
   // ---------- 出力 ----------
   function codeFor(store, prefix, text) {
     const k = normKey(text);
@@ -538,15 +686,16 @@ const Core = (() => {
     for (let c = 0; c < cfg.length; c++) if (cfg[c].action !== 'drop') a.push(c);
     return a;
   }
-  function outText(table, cfg, store, row, c) {
-    const t = cellText(row[c], table.date1904);
+  function outText(table, cfg, store, r, c) {
+    if (cfg[c].action === 'dummy') return dummyText(table, c, r);
+    const t = cellText(table.rows[r][c], table.date1904);
     return cfg[c].action === 'encode' ? codeFor(store, cfg[c].prefix, t) : t;
   }
   function toCsv(table, cfg, store) {
     const cols = outCols(cfg);
     const lines = [cols.map(c => csvField(table.headers[c])).join(',')];
-    for (const row of table.rows) {
-      lines.push(cols.map(c => csvField(outText(table, cfg, store, row, c))).join(','));
+    for (let r = 0; r < table.rows.length; r++) {
+      lines.push(cols.map(c => csvField(outText(table, cfg, store, r, c))).join(','));
     }
     return lines.join('\r\n') + '\r\n';
   }
@@ -561,9 +710,17 @@ const Core = (() => {
   function toWorkbook(table, cfg, store) {
     const cols = outCols(cfg);
     const aoa = [cols.map(c => ({ t: 's', v: table.headers[c] }))];
-    for (const row of table.rows) {
+    for (let r = 0; r < table.rows.length; r++) {
+      const row = table.rows[r];
       aoa.push(cols.map(c => {
         const cell = row[c];
+        if (cfg[c].action === 'dummy') {
+          const v = dummyColumn(table, c)[r];
+          if (v == null) return null;
+          if (typeof v !== 'number') return { t: 's', v };
+          const z = numericInfo(table, c).z;
+          return z ? { t: 'n', v, z } : { t: 'n', v };
+        }
         if (cfg[c].action === 'encode') {
           const code = codeFor(store, cfg[c].prefix, cellText(cell, table.date1904));
           return code === '' ? null : { t: 's', v: code };
@@ -659,7 +816,7 @@ const Core = (() => {
 
   return { decodeText, detectDelimiter, parseCsv, rowsToCsv, gridFromSheet, cellText, makeTable, dataLikeHeaders, suggest,
     normKey, newStore, assign, commit, countEntries, mappingRows, importMapping,
-    outCols, outText, toCsv, toWorkbook, workbookBytes, residualCheck };
+    numericInfo, dummyColumn, outCols, outText, toCsv, toWorkbook, workbookBytes, residualCheck };
 })();
 </script>
 
@@ -799,9 +956,12 @@ const Core = (() => {
     S.rowEls = [];
     const frag = document.createDocumentFragment();
     S.cfg.forEach((cf, c) => {
+      const ni = Core.numericInfo(S.table, c);
+      const numeric = ni.eligible;
       const sel = h('select', { 'aria-label': S.table.headers[c] + ' の処理' },
         h('option', { value: 'keep' }, 'そのまま'),
         h('option', { value: 'encode' }, '符号化'),
+        h('option', { value: 'dummy', disabled: !numeric }, 'ダミー値'),
         h('option', { value: 'drop' }, '削除'));
       sel.value = cf.action;
       const pre = h('input', { type: 'text', class: 'prefix', maxlength: '12', spellcheck: 'false', 'aria-label': S.table.headers[c] + ' の接頭辞' });
@@ -820,7 +980,7 @@ const Core = (() => {
         refresh();
       });
       sync();
-      S.rowEls.push({ tr, cnt, header: S.table.headers[c].toLowerCase() });
+      S.rowEls.push({ tr, cnt, sel, sync, bulkOk: ni.bulkOk, idLike: ni.idLike, header: S.table.headers[c].toLowerCase() });
       frag.append(tr);
     });
     tb.replaceChildren(frag);
@@ -829,15 +989,25 @@ const Core = (() => {
 
   function refresh() {
     const st = Core.assign(S.store, S.table, S.cfg);
-    let nEnc = 0, nDrop = 0;
+    let nEnc = 0, nDrop = 0, nDummy = 0;
+    const MODE = { freq: '値の割合から作成', normal: '平均とばらつきから作成', quantile: '分布の形から作成' };
     S.cfg.forEach((cf, c) => {
-      if (cf.action === 'encode') nEnc++; else if (cf.action === 'drop') nDrop++;
-      S.rowEls[c].cnt.textContent = st.uniq[c] == null ? '' : st.uniq[c].toLocaleString();
+      let note = '';
+      if (cf.action === 'encode') { nEnc++; note = '符号 ' + st.uniq[c].toLocaleString() + ' 種'; }
+      else if (cf.action === 'drop') nDrop++;
+      else if (cf.action === 'dummy') { nDummy++; note = MODE[Core.numericInfo(S.table, c).mode]; }
+      else if (S.rowEls[c].idLike) note = 'ダミー値の対象外（' + S.rowEls[c].idLike + '）';
+      S.rowEls[c].cnt.textContent = note;
     });
+    const nKeep = S.cfg.length - nEnc - nDrop - nDummy;
+    S.anyDummy = nDummy > 0;
     const sum = $('summary');
-    sum.replaceChildren('符号化 ', h('b', null, String(nEnc)), ' 列・削除 ', h('b', null, String(nDrop)),
-      ' 列・そのまま ', h('b', null, String(S.cfg.length - nEnc - nDrop)), ' 列');
-    const none = nEnc + nDrop === 0;
+    sum.replaceChildren('符号化 ', h('b', null, String(nEnc)), ' 列・ダミー値 ', h('b', null, String(nDummy)),
+      ' 列・削除 ', h('b', null, String(nDrop)), ' 列・そのまま ', h('b', null, String(nKeep)), ' 列');
+    $('dummyNote').hidden = nDummy === 0;
+    $('dummyMixed').hidden = nKeep === 0;
+    $('allDummy').disabled = !S.cfg.some((cf, c) => cf.action === 'keep' && S.rowEls[c].bulkOk);
+    const none = nEnc + nDrop + nDummy === 0;
     $('dlCsv').disabled = none; $('dlXlsx').disabled = none;
     const n = Core.countEntries(S.store);
     $('mapCount').textContent = n ? '（現在 ' + n.toLocaleString() + ' 件）' : '';
@@ -852,14 +1022,14 @@ const Core = (() => {
   function renderPreview() {
     const t = S.table, after = S.previewMode === 'after';
     const cols = after ? Core.outCols(S.cfg) : S.cfg.map((_, c) => c);
-    const cls = c => S.cfg[c].action === 'encode' ? 'enc' : S.cfg[c].action === 'drop' ? 'drp' : null;
+    const cls = c => ({ encode: 'enc', drop: 'drp', dummy: 'dmy' })[S.cfg[c].action] || null;
     const tbl = $('preview');
     tbl.tHead.replaceChildren(h('tr', null, ...cols.map(c => h('th', { class: cls(c), title: t.headers[c] }, clip(t.headers[c], 28)))));
     const frag = document.createDocumentFragment();
     const n = Math.min(PREVIEW_ROWS, t.rows.length);
     for (let r = 0; r < n; r++) {
       frag.append(h('tr', null, ...cols.map(c => {
-        const v = after ? Core.outText(t, S.cfg, S.store, t.rows[r], c) : Core.cellText(t.rows[r][c], t.date1904);
+        const v = after ? Core.outText(t, S.cfg, S.store, r, c) : Core.cellText(t.rows[r][c], t.date1904);
         return h('td', { class: cls(c), title: v.length > 32 ? v : null }, clip(v.replace(/\s+/g, ' '), 32));
       })));
     }
@@ -905,7 +1075,7 @@ const Core = (() => {
   // AIに渡すファイルの名前には元のファイル名を使わない（施設名や患者名が入っていることがある）
   function dataName(ext) {
     const d = new Date(), p = n => String(n).padStart(2, '0');
-    return '符号化済データ_' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + ext;
+    return (S.anyDummy ? 'ダミー値入りデータ_' : '符号化済データ_') + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + ext;
   }
   const BOM = '﻿';
   function afterDataSave() {
@@ -937,6 +1107,14 @@ const Core = (() => {
   $('filter').addEventListener('input', e => {
     const q = e.target.value.trim().toLowerCase();
     for (const r of S.rowEls) r.tr.hidden = q !== '' && !r.header.includes(q);
+  });
+  $('allDummy').addEventListener('click', () => {
+    S.cfg.forEach((cf, c) => {
+      const el = S.rowEls[c];
+      if (cf.action !== 'keep' || !el.bulkOk) return;
+      cf.action = 'dummy'; el.sel.value = 'dummy'; el.sync();
+    });
+    refresh();
   });
   $('pvAfter').addEventListener('click', () => setPv('after'));
   $('pvBefore').addEventListener('click', () => setPv('before'));
